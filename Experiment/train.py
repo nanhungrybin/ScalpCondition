@@ -7,9 +7,9 @@ def train(model, train_dataloader, epoch, num_epochs, optimizer, loss_function, 
     avg_cost = 0
     correct = 0
     total_samples = 0
-
+    
+ 
     model.train()
-
 
     for batch_idx, (X, y) in enumerate(train_dataloader, 1):
         X = X.to(device)
@@ -40,8 +40,7 @@ def train(model, train_dataloader, epoch, num_epochs, optimizer, loss_function, 
 
     
     print(f"[Epoch: {epoch + 1}/{num_epochs}] Loss: {avg_cost:.4f} Accuracy: {accuracy:.4f}")
-    # batch_idx : 현재 배치의 인덱스
-    # len(train_dataloader) : 전체 배치 수
+  
 
 
     # 모델 가중치 저장

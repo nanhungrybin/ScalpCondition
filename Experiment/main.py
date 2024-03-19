@@ -12,6 +12,7 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import Model
 import wandb
+import Lossfunc 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(device)
@@ -49,8 +50,47 @@ dataloader_test = DataLoader(test_dataset, batch_size = CFG["batch_size"], shuff
 total_samples = len(dataloader_train.dataset)
 total_batch = total_samples // CFG["batch_size"]
 
+def wandB_main():
+        
+    wandb.init()
+    config = wandb.config
+    
+    # 손실 함수 선택
+    if config.loss_function == "CrossEntropyLoss":
+        loss_function = nn.CrossEntropyLoss()
+    elif config.loss_function == "ListwiseRankingLoss":
+        loss_function = nn.ListwiseRankingLoss()
+    elif config.loss_function == "TripletLoss":
+        loss_function = nn.TripletLoss(margin=1.0)
 
 
+    training_params = {
+    'num_epochs':config.num_epochs,
+    'learning_rate':config.learning_rate,
+    "optimizer" : config.optimizer,
+    "loss_function" :config.loss_function,
+    "device": device,
+    "total_batch" : total_batch 
+    }
+    
+    ################# 학습과정에서 사용할 변수
+    optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
+    
+    loss_function = training_params["loss_function"]
+    loss_function = loss_function.to(device)
+    
+    num_epochs = training_params["num_epochs"]
+    wandb.watch(model, log='all')
+
+    for epoch in range(num_epochs) :
+        save_path = "C:\\Users\\xianm\\Downloads\\HB\\weights\\resnet50.pth"
+        ### 학습 ################################################
+        model, train_loss, accuracy = train(model, dataloader_train, epoch, config.num_epochs, optimizer, loss_function, total_batch, device, save_path )
+        ### 최종테스트 ######################################################
+        all_preds, all_labels, val_accuracy = test(model, dataloader_test, device)  
+        wandb.log({"train_acc":accuracy, "train_loss":train_loss, "valid_acc":val_accuracy})
+
+    return all_preds, all_labels
 
 if __name__ == "__main__": # 객체를 불러 오는 것은 main함수에
 
@@ -61,39 +101,11 @@ if __name__ == "__main__": # 객체를 불러 오는 것은 main함수에
     ######## model load ############
 
     MODEL = Model.RESNET50(num_classes)
-
-
-    # 사용자 정의 손실함수
-    # Triplet Loss
-    class TripletLoss(nn.Module):
-        def __init__(self, margin=1.0):
-            super(TripletLoss, self).__init__()
-            self.margin = margin
-
-        def forward(self, anchor, positive, negative):
-            distance_positive = (anchor - positive).pow(2).sum(1)  # Anchor와 Positive 사이의 거리
-            distance_negative = (anchor - negative).pow(2).sum(1)  # Anchor와 Negative 사이의 거리
-            losses = torch.relu(distance_positive - distance_negative + self.margin)
-            return losses.mean()
-    # loss_function = nn.TripletLoss().to(device)
-        
-    # Listwise Ranking Loss
-    class ListwiseRankingLoss(nn.Module):
-        def __init__(self):
-            super(ListwiseRankingLoss, self).__init__()
-
-        def forward(self, predictions, labels):
-            # 예측값과 실제 레이블 간의 순서를 고려하여 손실을 계산하는 로직을 구현
-            loss = torch.mean(torch.abs(predictions - labels))  # 예제 손실 계산
-            return loss
-    # loss_function = nn.ListwiseRankingLoss().to(device)    
-   
     # model load
     model = MODEL.to(device)
 
-    ################# 학습 시 가동
     ################# hyperparameter tunning with Wandb ###############
-    # 로그인
+
     sweep_config = {
         "name": "hyperparameter_tuning",
         "method": "random",
@@ -105,64 +117,19 @@ if __name__ == "__main__": # 객체를 불러 오는 것은 main함수에
                 'max': 1e-3},
             "num_epochs": {"values": [10, 20, 30]}, 
             "batch_size": {"values": [16, 32, 64]},
+            "loss_function":{'values': ["CrossEntropyLoss", "ListwiseRankingLoss", "TripletLoss"]},
             "dropout": {"values": [0.1, 0.2, 0.3]}
         }
     }
 
     sweep_id = wandb.sweep(sweep_config, project="두피 질환 유형_절차(기본)")
 
-    # Wandb 초기화    run!!
-    wandb.init()
-
-    # 하이퍼파라미터 설정 가져오기
-    config = wandb.config
-
-    training_params = {
-    'num_epochs':config.parameters.num_epochs,
-    'learning_rate':config.parameters.learning_rate,
-    # "optimizer" : config["optimizer"],
-    # "loss_function" :config["loss_function"],
-    "train_dataloader": dataloader_train,
-    "test_dataloader" : dataloader_test,
-    "device": device,
-    "total_batch" : total_batch 
-    }
-    ####### optim, loss function #######
-    optimizer = torch.optim.Adam(MODEL.parameters(), lr=training_params["learning_rate"])
-    
-    # crossentropy
-    loss_function = nn.CrossEntropyLoss().to(device)
-    
-    ################# 학습과정에서 사용할 변수
-    # loss_function = training_params["loss_function"]
-    train_dataloader = training_params["train_dataloader"]
-    test_dataloader = training_params["test_dataloader"]
-    Num_epochs = training_params["num_epochs"]
-
-    ################## 학습과정 들어가기 전에 실시간으로 모델 tracking ##############
-    wandb.watch(model)
-
-
-    for epoch in range(sweep_config. num_epochs) :
-        save_path = "C:\\Users\\xianm\\Downloads\\HB\\weights\\resnet50.pth"
-        model, loss, accuracy = train(model, train_dataloader, epoch, Num_epochs, optimizer, loss_function, total_batch, device, save_path )
-        
-        ################### wandb log 에 남길값 지정#################################
-        # 각 epoch 별로 진행
-
-        wandb.log({"acc":accuracy, "loss":loss})
-    
-    ### Sweep 작업 실행
-    wandb.agent(sweep_id, lambda: train(model, dataloader_train, Num_epochs, optimizer, loss_function, total_batch, device, save_path), count=2)  
-    ### 최종테스트 ######################################################
-    all_preds, all_labels, accuracy = test(model, test_dataloader, device)  
-
-    print(f"최종 TEST 성능 : {accuracy}")
-
+    ############ Sweep 작업 실행 ########################
+    wandb.agent(sweep_id, wandB_main, count=2)
 
 
     # confusion matrix 계산
-    cm = confusion_matrix(all_labels, all_preds)
+    cm = confusion_matrix(wandB_main[1], wandB_main[0]) # all_labels, all_preds, 
 
 
     # 각 클래스별로 맞춘 개수 출력
