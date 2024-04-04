@@ -81,3 +81,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs, dataloaders,
     # load best model weights
     model.load_state_dict(best_model_wts)
     return model, history
+
+
+# 로짓값(Logits): 모델의 출력으로, 각 클래스에 대한 점수 또는 확신도. 로짓값은 소프트맥스 함수를 거치기 전의 값이며, 양수 및 음수가 될 수 있다.
+# 클래스에 대한 확률(Probabilities): 소프트맥스 함수를 통해 계산된 확률값, 각 클래스에 속할 확률을 나타냄. 확률은 항상 0과 1 사이의 값이며, 모든 클래스에 대한 확률의 합은 1.
