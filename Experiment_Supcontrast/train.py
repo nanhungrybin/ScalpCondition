@@ -37,16 +37,16 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs, dataloaders,
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
                     with amp.autocast(enabled=True):
-                        outputs,_ = model(inputs)
-                        loss = criterion(outputs, labels)
+                        _, outputs = model(inputs)  # outputs은 logit값 => 클래스에 대한 확률이 아니라 각 클래스에 대한 점수 => 로짓값(logits)은 일반적으로 소프트맥스(softmax) 함수를 거쳐 클래스에 대한 확률(probabilities)로 변환
+                        loss = criterion(outputs, labels)  # 모델의 출력(logits)과 실제 레이블을 비교
                         loss = loss / CFG.n_accumulate
 
                     # backward only if in training phase
                     if phase == 'train':
-                        scaler.scale(loss).backward()
+                        scaler.scale(loss).backward()  # 그래디언트를 계산
 
                     # optimize only if in training phase
-                    if phase == 'train' and (step + 1) % CFG.n_accumulate == 0:
+                    if phase == 'train' and (step + 1) % CFG.n_accumulate == 0:  # 그래디언트를 사용하여 모델의 가중치를 업데이트
                         scaler.step(optimizer)
                         scaler.update()
                         scheduler.step()
